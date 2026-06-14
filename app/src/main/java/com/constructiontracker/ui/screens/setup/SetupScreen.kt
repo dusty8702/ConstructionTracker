@@ -1,6 +1,7 @@
 package com.constructiontracker.ui.screens.setup
 
 import android.Manifest
+import com.constructiontracker.ui.screens.account.AccountIconButton
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -22,21 +23,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -48,6 +49,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -78,11 +80,42 @@ import java.io.File
 fun SetupScreen(viewModel: SetupViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showAddForm by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    LaunchedEffect(uiState.addContractor.saveSuccess) {
+        if (uiState.addContractor.saveSuccess) {
+            showAddForm = false
+            snackbarHostState.showSnackbar("Contractor added!")
+            viewModel.clearAddSuccess()
+        }
+    }
+
+    if (showAddForm) {
+        ModalBottomSheet(
+            onDismissRequest = { showAddForm = false },
+            sheetState = sheetState
+        ) {
+            AddContractorSheet(
+                state = uiState.addContractor,
+                onNameChange = viewModel::updateNewName,
+                onTypeChange = viewModel::updateNewContractType,
+                onAmountChange = viewModel::updateNewContractAmount,
+                onContactNumberChange = viewModel::updateNewContactNumber,
+                onBankAccountNumberChange = viewModel::updateNewBankAccountNumber,
+                onBankNameChange = viewModel::updateNewBankName,
+                onBankBranchChange = viewModel::updateNewBankBranch,
+                onPhotoSelected = viewModel::updateNewPhotoUri,
+                onAdd = viewModel::addContractor
+            )
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Setup") },
+                actions = { AccountIconButton() },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -90,71 +123,28 @@ fun SetupScreen(viewModel: SetupViewModel = viewModel()) {
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        if (uiState.isLoading) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item {
-                    Text(
-                        text = "Contractors",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Edit contractor names and contract types.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-                items(uiState.contractors) { contractor ->
-                    ContractorEditCard(
-                        state = contractor,
-                        onNameChange = { viewModel.updateName(contractor.id, it) },
-                        onTypeChange = { viewModel.updateContractType(contractor.id, it) },
-                        onAmountChange = { viewModel.updateContractAmount(contractor.id, it) },
-                        onSave = { viewModel.saveContractor(contractor.id) },
-                        onSnackbar = { viewModel.clearSaveSuccess(contractor.id) },
-                        snackbarHostState = snackbarHostState
-                    )
-                }
-
-                item {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Add Contractor",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Add a new contractor to track payments for.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-
-                item {
-                    AddContractorCard(
-                        state = uiState.addContractor,
-                        onNameChange = viewModel::updateNewName,
-                        onTypeChange = viewModel::updateNewContractType,
-                        onAmountChange = viewModel::updateNewContractAmount,
-                        onContactNumberChange = viewModel::updateNewContactNumber,
-                        onBankAccountNumberChange = viewModel::updateNewBankAccountNumber,
-                        onBankNameChange = viewModel::updateNewBankName,
-                        onBankBranchChange = viewModel::updateNewBankBranch,
-                        onPhotoSelected = viewModel::updateNewPhotoUri,
-                        onAdd = viewModel::addContractor,
-                        onSnackbar = viewModel::clearAddSuccess,
-                        snackbarHostState = snackbarHostState
-                    )
+        Box(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.Filled.PersonAdd,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = "No contractors yet",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+                Spacer(Modifier.height(24.dp))
+                Button(onClick = { showAddForm = true }) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text("Add Contractor", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -163,7 +153,7 @@ fun SetupScreen(viewModel: SetupViewModel = viewModel()) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddContractorCard(
+private fun AddContractorSheet(
     state: AddContractorState,
     onNameChange: (String) -> Unit,
     onTypeChange: (String) -> Unit,
@@ -173,29 +163,34 @@ private fun AddContractorCard(
     onBankNameChange: (String) -> Unit,
     onBankBranchChange: (String) -> Unit,
     onPhotoSelected: (String) -> Unit,
-    onAdd: () -> Unit,
-    onSnackbar: () -> Unit,
-    snackbarHostState: SnackbarHostState
+    onAdd: () -> Unit
 ) {
-    LaunchedEffect(state.saveSuccess) {
-        if (state.saveSuccess) {
-            snackbarHostState.showSnackbar("Contractor added!")
-            onSnackbar()
+    LazyColumn(
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                text = "Add Contractor",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(4.dp))
+            HorizontalDivider()
         }
-    }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-            // --- Basic info ---
+        item {
             OutlinedTextField(
                 value = state.name,
                 onValueChange = onNameChange,
                 label = { Text("Contractor Name *") },
                 modifier = Modifier.fillMaxWidth()
             )
+        }
 
+        item {
             Text("Contract Type", style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(4.dp))
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = state.contractType == "OPEN_ENDED",
@@ -208,8 +203,10 @@ private fun AddContractorCard(
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
                 ) { Text("Fixed Contract") }
             }
+        }
 
-            if (state.contractType == "FIXED") {
+        if (state.contractType == "FIXED") {
+            item {
                 OutlinedTextField(
                     value = state.contractAmount,
                     onValueChange = onAmountChange,
@@ -219,8 +216,9 @@ private fun AddContractorCard(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
+        }
 
-            // --- Contact ---
+        item {
             OutlinedTextField(
                 value = state.contactNumber,
                 onValueChange = onContactNumberChange,
@@ -231,13 +229,17 @@ private fun AddContractorCard(
                 supportingText = state.contactNumberError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
                 modifier = Modifier.fillMaxWidth()
             )
+        }
 
-            // --- Bank details ---
+        item {
             Text(
                 text = "Bank Details",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
+        }
+
+        item {
             OutlinedTextField(
                 value = state.bankAccountNumber,
                 onValueChange = onBankAccountNumberChange,
@@ -245,39 +247,48 @@ private fun AddContractorCard(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+
+        item {
             OutlinedTextField(
                 value = state.bankName,
                 onValueChange = onBankNameChange,
                 label = { Text("Bank Name") },
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+
+        item {
             OutlinedTextField(
                 value = state.bankBranch,
                 onValueChange = onBankBranchChange,
                 label = { Text("Bank Branch") },
                 modifier = Modifier.fillMaxWidth()
             )
+        }
 
-            // --- Photo ---
+        item {
             PhotoPickerSection(
                 photoUri = state.photoUri,
                 onPhotoSelected = onPhotoSelected
             )
+        }
 
-            // --- Submit ---
+        item {
             Button(
                 onClick = onAdd,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !state.isSaving && state.name.isNotBlank()
             ) {
                 if (state.isSaving) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
                 } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
-                        Spacer(Modifier.size(6.dp))
-                        Text("Add Contractor", fontWeight = FontWeight.SemiBold)
-                    }
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("Add Contractor", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -400,77 +411,6 @@ private fun PhotoPickerSection(photoUri: String, onPhotoSelected: (String) -> Un
                 Icon(Icons.Filled.Photo, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(6.dp))
                 Text("Gallery")
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ContractorEditCard(
-    state: ContractorEditState,
-    onNameChange: (String) -> Unit,
-    onTypeChange: (String) -> Unit,
-    onAmountChange: (String) -> Unit,
-    onSave: () -> Unit,
-    onSnackbar: (String) -> Unit,
-    snackbarHostState: SnackbarHostState
-) {
-    LaunchedEffect(state.saveSuccess) {
-        if (state.saveSuccess) {
-            snackbarHostState.showSnackbar("${state.name} saved!")
-            onSnackbar("saved")
-        }
-    }
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
-                value = state.name,
-                onValueChange = onNameChange,
-                label = { Text("Contractor Name") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Text("Contract Type", style = MaterialTheme.typography.labelMedium)
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    selected = state.contractType == "OPEN_ENDED",
-                    onClick = { onTypeChange("OPEN_ENDED") },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-                ) { Text("Open Ended") }
-                SegmentedButton(
-                    selected = state.contractType == "FIXED",
-                    onClick = { onTypeChange("FIXED") },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-                ) { Text("Fixed Contract") }
-            }
-
-            if (state.contractType == "FIXED") {
-                OutlinedTextField(
-                    value = state.contractAmount,
-                    onValueChange = onAmountChange,
-                    label = { Text("Contract Amount (LKR)") },
-                    prefix = { Text("Rs. ") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            Button(
-                onClick = onSave,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.isSaving && state.name.isNotBlank()
-            ) {
-                if (state.isSaving) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.CheckCircle, contentDescription = null)
-                        Spacer(Modifier.size(6.dp))
-                        Text("Save", fontWeight = FontWeight.SemiBold)
-                    }
-                }
             }
         }
     }

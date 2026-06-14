@@ -1,5 +1,7 @@
 package com.constructiontracker.ui.screens.overview
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,42 +13,65 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.constructiontracker.data.database.entities.PaymentEntity
 import com.constructiontracker.data.database.entities.PurchaseEntity
 import com.constructiontracker.ui.theme.ContractorColors
+import com.constructiontracker.ui.screens.account.AccountIconButton
+import com.constructiontracker.utils.ExportContent
+import com.constructiontracker.utils.ExportFormat
 import com.constructiontracker.utils.formatCurrency
+import com.constructiontracker.utils.generateExportFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -74,6 +99,7 @@ fun OverviewScreen(viewModel: OverviewViewModel = viewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("Construction Tracker") },
+                actions = { AccountIconButton() },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -118,6 +144,50 @@ private fun ContractorDetailSheet(
     purchases: List<PurchaseEntity>
 ) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var isExporting by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    if (showExportDialog) {
+        ExportDialog(
+            onDismiss = { showExportDialog = false },
+            onExport = { fmt, cnt, from, to ->
+                showExportDialog = false
+                scope.launch {
+                    isExporting = true
+                    val file = withContext(Dispatchers.IO) {
+                        generateExportFile(
+                            context = context,
+                            contractorName = summary.contractor.name,
+                            contractType = summary.contractor.contractType,
+                            totalPaid = summary.totalPaid,
+                            allPayments = summary.payments,
+                            allPurchases = purchases,
+                            format = fmt,
+                            content = cnt,
+                            fromDate = from,
+                            toDate = to
+                        )
+                    }
+                    isExporting = false
+                    if (file != null) {
+                        val mimeType = if (fmt == ExportFormat.PDF) "application/pdf" else "image/png"
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = mimeType
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            putExtra(Intent.EXTRA_SUBJECT, "${summary.contractor.name} Report")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Export Report"))
+                    } else {
+                        Toast.makeText(context, "Export failed. Please try again.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
@@ -125,31 +195,48 @@ private fun ContractorDetailSheet(
     ) {
         // Header
         item {
-            Column(modifier = Modifier.padding(bottom = 8.dp)) {
-                Text(
-                    text = summary.contractor.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = if (summary.contractor.contractType == "FIXED") "Fixed Contract" else "Open Ended",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Total Paid: ${formatCurrency(summary.totalPaid)}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                if (summary.contractor.contractType == "FIXED" && summary.contractor.contractAmount > 0) {
-                    val remaining = summary.contractor.contractAmount - summary.totalPaid
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Remaining: ${formatCurrency(remaining.coerceAtLeast(0.0))}  of  ${formatCurrency(summary.contractor.contractAmount)}",
+                        text = summary.contractor.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (summary.contractor.contractType == "FIXED") "Fixed Contract" else "Open Ended",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Total Paid: ${formatCurrency(summary.totalPaid)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    if (summary.contractor.contractType == "FIXED" && summary.contractor.contractAmount > 0) {
+                        val remaining = summary.contractor.contractAmount - summary.totalPaid
+                        Text(
+                            text = "Remaining: ${formatCurrency(remaining.coerceAtLeast(0.0))}  of  ${formatCurrency(summary.contractor.contractAmount)}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+                if (isExporting) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                } else {
+                    IconButton(onClick = { showExportDialog = true }) {
+                        Icon(
+                            Icons.Filled.Share,
+                            contentDescription = "Export Report",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
             HorizontalDivider()
@@ -209,6 +296,137 @@ private fun ContractorDetailSheet(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportDialog(
+    onDismiss: () -> Unit,
+    onExport: (ExportFormat, ExportContent, Long?, Long?) -> Unit
+) {
+    var format by remember { mutableStateOf(ExportFormat.PDF) }
+    var content by remember { mutableStateOf(ExportContent.BOTH) }
+    var useCustomRange by remember { mutableStateOf(false) }
+    var fromDate by remember { mutableStateOf<Long?>(null) }
+    var toDate by remember { mutableStateOf<Long?>(null) }
+    var showFromPicker by remember { mutableStateOf(false) }
+    var showToPicker by remember { mutableStateOf(false) }
+    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
+
+    if (showFromPicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = fromDate)
+        DatePickerDialog(
+            onDismissRequest = { showFromPicker = false },
+            confirmButton = {
+                TextButton(onClick = { fromDate = state.selectedDateMillis; showFromPicker = false }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = { TextButton(onClick = { showFromPicker = false }) { Text("Cancel") } }
+        ) { DatePicker(state = state) }
+    }
+
+    if (showToPicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = toDate)
+        DatePickerDialog(
+            onDismissRequest = { showToPicker = false },
+            confirmButton = {
+                TextButton(onClick = { toDate = state.selectedDateMillis; showToPicker = false }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = { TextButton(onClick = { showToPicker = false }) { Text("Cancel") } }
+        ) { DatePicker(state = state) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Export Report", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Format
+                Text("Format", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Row {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        RadioButton(selected = format == ExportFormat.PDF, onClick = { format = ExportFormat.PDF })
+                        Text("PDF", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        RadioButton(selected = format == ExportFormat.IMAGE, onClick = { format = ExportFormat.IMAGE })
+                        Text("Image (PNG)", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                HorizontalDivider()
+
+                // Content
+                Text("Include", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                listOf(
+                    ExportContent.BOTH to "Payments & Purchases",
+                    ExportContent.PAYMENTS_ONLY to "Payments only",
+                    ExportContent.PURCHASES_ONLY to "Purchases only"
+                ).forEach { (c, label) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = content == c, onClick = { content = c })
+                        Text(label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                HorizontalDivider()
+
+                // Time period
+                Text("Time Period", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = !useCustomRange,
+                        onClick = { useCustomRange = false; fromDate = null; toDate = null }
+                    )
+                    Text("All Records", style = MaterialTheme.typography.bodyMedium)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = useCustomRange, onClick = { useCustomRange = true })
+                    Text("Custom Date Range", style = MaterialTheme.typography.bodyMedium)
+                }
+                if (useCustomRange) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("From:", modifier = Modifier.width(40.dp), style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = { showFromPicker = true }, modifier = Modifier.weight(1f)) {
+                            Text(
+                                fromDate?.let { dateFormat.format(Date(it)) } ?: "Select date",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("To:", modifier = Modifier.width(40.dp), style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = { showToPicker = true }, modifier = Modifier.weight(1f)) {
+                            Text(
+                                toDate?.let { dateFormat.format(Date(it)) } ?: "Select date",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onExport(
+                    format, content,
+                    if (useCustomRange) fromDate else null,
+                    if (useCustomRange) toDate else null
+                )
+            }) { Text("Export") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable

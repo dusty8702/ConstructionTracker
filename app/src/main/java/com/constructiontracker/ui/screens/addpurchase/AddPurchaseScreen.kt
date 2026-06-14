@@ -1,5 +1,6 @@
 package com.constructiontracker.ui.screens.addpurchase
 
+import com.constructiontracker.ui.screens.account.AccountIconButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,6 +92,7 @@ fun AddPurchaseScreen(viewModel: AddPurchaseViewModel = viewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("Add Purchase") },
+                actions = { AccountIconButton() },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )

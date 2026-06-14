@@ -11,20 +11,7 @@ class ConstructionRepository(database: AppDatabase) {
     private val paymentDao = database.paymentDao()
     private val purchaseDao = database.purchaseDao()
 
-    suspend fun initializeDefaultContractors() {
-        if (contractorDao.getAllContractorsOnce().isEmpty()) {
-            contractorDao.insertContractors(
-                listOf(
-                    ContractorEntity(1, "Bathroom & Tile Contractor", "OPEN_ENDED"),
-                    ContractorEntity(2, "Electrical Contractor", "OPEN_ENDED"),
-                    ContractorEntity(3, "Ceiling Contractor", "OPEN_ENDED")
-                )
-            )
-        }
-    }
-
     fun getAllContractors(): Flow<List<ContractorEntity>> = contractorDao.getAllContractors()
-    suspend fun updateContractor(contractor: ContractorEntity) = contractorDao.updateContractor(contractor)
     suspend fun addContractor(
         name: String,
         contractType: String,

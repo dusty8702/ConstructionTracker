@@ -4,21 +4,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.constructiontracker.ConstructionTrackerApplication
-import com.constructiontracker.data.database.entities.ContractorEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-data class ContractorEditState(
-    val id: Int,
-    val name: String,
-    val contractType: String,
-    val contractAmount: String,
-    val isSaving: Boolean = false,
-    val saveSuccess: Boolean = false
-)
 
 data class AddContractorState(
     val name: String = "",
@@ -35,8 +25,6 @@ data class AddContractorState(
 )
 
 data class SetupUiState(
-    val contractors: List<ContractorEditState> = emptyList(),
-    val isLoading: Boolean = true,
     val addContractor: AddContractorState = AddContractorState()
 )
 
@@ -45,58 +33,6 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SetupUiState())
     val uiState: StateFlow<SetupUiState> = _uiState.asStateFlow()
-
-    init {
-        viewModelScope.launch {
-            repository.getAllContractors().collect { contractors ->
-                _uiState.update { state ->
-                    val currentEdits = state.contractors.associateBy { it.id }
-                    SetupUiState(
-                        contractors = contractors.map { entity ->
-                            currentEdits[entity.id] ?: ContractorEditState(
-                                id = entity.id,
-                                name = entity.name,
-                                contractType = entity.contractType,
-                                contractAmount = if (entity.contractAmount > 0)
-                                    entity.contractAmount.toBigDecimal().stripTrailingZeros().toPlainString()
-                                else ""
-                            )
-                        },
-                        isLoading = false
-                    )
-                }
-            }
-        }
-    }
-
-    private fun updateContractor(id: Int, transform: (ContractorEditState) -> ContractorEditState) {
-        _uiState.update { state ->
-            state.copy(contractors = state.contractors.map { if (it.id == id) transform(it) else it })
-        }
-    }
-
-    fun updateName(id: Int, name: String) = updateContractor(id) { it.copy(name = name) }
-    fun updateContractType(id: Int, type: String) = updateContractor(id) { it.copy(contractType = type) }
-    fun updateContractAmount(id: Int, amount: String) = updateContractor(id) { it.copy(contractAmount = amount) }
-
-    fun saveContractor(id: Int) {
-        val edit = _uiState.value.contractors.find { it.id == id } ?: return
-        if (edit.name.isBlank()) return
-        updateContractor(id) { it.copy(isSaving = true) }
-        viewModelScope.launch {
-            repository.updateContractor(
-                ContractorEntity(
-                    id = edit.id,
-                    name = edit.name.trim(),
-                    contractType = edit.contractType,
-                    contractAmount = edit.contractAmount.toDoubleOrNull() ?: 0.0
-                )
-            )
-            updateContractor(id) { it.copy(isSaving = false, saveSuccess = true) }
-        }
-    }
-
-    fun clearSaveSuccess(id: Int) = updateContractor(id) { it.copy(saveSuccess = false) }
 
     private fun updateAddState(transform: (AddContractorState) -> AddContractorState) {
         _uiState.update { it.copy(addContractor = transform(it.addContractor)) }

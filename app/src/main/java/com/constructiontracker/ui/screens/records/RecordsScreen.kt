@@ -1,5 +1,6 @@
 package com.constructiontracker.ui.screens.records
 
+import com.constructiontracker.ui.screens.account.AccountIconButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,6 +79,7 @@ fun RecordsScreen(viewModel: RecordsViewModel = viewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("All Records") },
+                actions = { AccountIconButton() },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
